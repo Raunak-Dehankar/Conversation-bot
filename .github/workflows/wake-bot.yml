@@ -1,0 +1,16 @@
+# Name of the workflow
+name: Wake Up Discord Bot
+
+# This controls when the action will run
+on:
+  schedule:
+    # This is a CRON schedule. It runs at 4:15 UTC, which is 9:45 AM IST.
+    - cron: '10 10 * * *'
+
+# This defines the job that will be executed
+jobs:
+  wake-up:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send a request to the bot's URL to wake it up
+        run: curl https://73bb54df-c3b5-47f8-80fb-667535d1601c-00-1fhbu7dsb8abi.spock.replit.dev/
