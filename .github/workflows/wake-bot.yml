@@ -5,7 +5,7 @@ name: Wake Up Discord Bot
 on:
   schedule:
     # This is a CRON schedule. It runs at 4:15 UTC, which is 9:45 AM IST.
-    - cron: '10 40 * * *'
+    - cron: '55 9 * * *'
 
 # This defines the job that will be executed
 jobs:
