@@ -17,7 +17,7 @@ DAILY_MINUTE = int(os.getenv("DAILY_MINUTE", 0))
 
 # Setup Gemini
 genai.configure(api_key=GEMINI_KEY)
-model = genai.GenerativeModel("gemini-pro")
+model = genai.GenerativeModel("gemini-1.5-flash-latest")
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -97,3 +97,4 @@ async def on_ready():
 
 client.loop.create_task(send_daily_checkin())
 client.run(DISCORD_TOKEN)
+
