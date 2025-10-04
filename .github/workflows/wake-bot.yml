@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
   schedule:
-    - cron: '25 10 * * *'
+    - cron: '36 10 * * *'
 
 # This defines the job that will be executed
 jobs:
