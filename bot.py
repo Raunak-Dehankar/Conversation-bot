@@ -51,7 +51,7 @@ async def on_ready():
 
 
 @tasks.loop(time=datetime.time(
-    13, 15, tzinfo=datetime.timezone(datetime.timedelta(hours=5, minutes=30))))
+    14, 0, tzinfo=datetime.timezone(datetime.timedelta(hours=5, minutes=30))))
 async def daily_prompt():
     """This is the scheduled background task that runs daily."""
     try:
@@ -110,4 +110,5 @@ keep_alive()
 # --- RUN THE BOT ---
 # This line uses the secret token to start the bot
 client.run(DISCORD_TOKEN)
+
 
