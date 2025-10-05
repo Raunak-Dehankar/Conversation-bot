@@ -1,100 +1,110 @@
 import discord
-import asyncio
-from datetime import datetime, time, timedelta
 import os
+import random
+import datetime
 import google.generativeai as genai
-from dotenv import load_dotenv
+from discord.ext import tasks
+# --- CONFIGURATION ---
 
-# Load environment variables from .env
-load_dotenv()
+# Load secrets from Replit's environment
+DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 
-# === CONFIG ===
-DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-GEMINI_KEY = os.getenv("GEMINI_KEY")
-CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
-DAILY_HOUR = int(os.getenv("DAILY_HOUR", 9))
-DAILY_MINUTE = int(os.getenv("DAILY_MINUTE", 0))
+# Configure the Gemini AI
+genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
-# Setup Gemini
-genai.configure(api_key=GEMINI_KEY)
-model = genai.GenerativeModel("gemini-1.5-flash-latest")
+# The ID of the channel where the bot will operate
+# To get this: right-click your channel in Discord -> Copy Channel ID
+# You might need to enable Developer Mode in Discord settings (Advanced)
+TARGET_CHANNEL_ID = os.getenv('CHANNEL_ID')  # <<< IMPORTANT: CHANGE THIS
 
-intents = discord.Intents.default()
-intents.message_content = True
-client = discord.Client(intents=intents)
-
-# === Daily Check-in Questions ===
-daily_questions = [
-    "How are you feeling today? (1–5)",
-    "What’s one thing you want to accomplish?",
-    "Any distractions you should avoid?",
-    "Share one small thing you’re grateful for.",
-    "Do you want a motivational boost or a focus tip today?"
+# Your list of predefined questions
+DAILY_QUESTIONS = [
+    "What is one thing you are looking forward to today?",
+    "Reflecting on yesterday, what was a moment that made you smile?",
+    "What's a small, achievable goal you can set for yourself right now?",
+    "What's one thing you can do today that your future self will thank you for?",
+    "How are you feeling right now, and what might be the reason for that feeling?"
 ]
 
-# === Memory storage ===
-conversation_history = {}
-current_day = datetime.now().date()
+# --- DISCORD BOT SETUP ---
 
-def reset_daily_memory():
-    """Reset conversation histories at midnight."""
-    global conversation_history, current_day
-    today = datetime.now().date()
-    if today != current_day:
-        conversation_history = {}
-        current_day = today
+# Define the bot's intents (permissions)
+intents = discord.Intents.default()
+intents.messages = True
+intents.message_content = True
+intents.guilds = True
 
-async def send_daily_checkin():
-    """Send daily check-in questions at the scheduled time."""
-    await client.wait_until_ready()
-    channel = client.get_channel(CHANNEL_ID)
-    while not client.is_closed():
-        now = datetime.now()
-        target = datetime.combine(now.date(), time(DAILY_HOUR, DAILY_MINUTE))
-        if now > target:
-            target += timedelta(days=1)
-        await asyncio.sleep((target - now).total_seconds())
-        
-        questions_text = "\n".join([f"{i+1}. {q}" for i, q in enumerate(daily_questions)])
-        await channel.send(f"🌞 Good morning! Here’s your daily check-in:\n\n{questions_text}")
+client = discord.Client(intents=intents)
 
-@client.event
-async def on_message(message):
-    if message.author == client.user:
-        return
-    
-    if message.channel.id == CHANNEL_ID:
-        reset_daily_memory()
-        user_id = str(message.author.id)
-        
-        # Get or initialize history for this user
-        if user_id not in conversation_history:
-            conversation_history[user_id] = [
-                {"role": "system", "content": "You are a friendly daily check-in coach helping the user reflect and stay motivated."}
-            ]
-        
-        # Add user message
-        conversation_history[user_id].append({"role": "user", "content": message.content})
-        
-        try:
-            response = model.generate_content(
-                "\n".join([f"{m['role']}: {m['content']}" for m in conversation_history[user_id]])
-            )
-            reply = response.text.strip()
-            
-            # Save bot response to history
-            conversation_history[user_id].append({"role": "assistant", "content": reply})
-            
-            if reply:
-                await message.channel.send(reply)
-        except Exception as e:
-            await message.channel.send("⚠️ Sorry, I hit an error with Gemini.")
-            print("Gemini error:", e)
+# --- BOT EVENTS AND TASKS ---
+
 
 @client.event
 async def on_ready():
-    print(f"✅ Logged in as {client.user}")
+    """This function runs when the bot successfully connects to Discord."""
+    print(f'We have logged in as {client.user}')
+    # Start the background task when the bot is ready
+    daily_prompt.start()
 
-client.loop.create_task(send_daily_checkin())
+
+@tasks.loop(time=datetime.time(
+    13, 15, tzinfo=datetime.timezone(datetime.timedelta(hours=5, minutes=30))))
+async def daily_prompt():
+    """This is the scheduled background task that runs daily."""
+    try:
+        channel = client.get_channel(TARGET_CHANNEL_ID)
+        if channel:
+            question = random.choice(DAILY_QUESTIONS)
+            await channel.send(
+                f"<@{829638015416270858}> **Good morning! Here is your daily prompt:**\n\n> {question}"
+            )
+        else:
+            print(f"Error: Channel with ID {TARGET_CHANNEL_ID} not found.")
+    except Exception as e:
+        print(f"Error in daily_prompt task: {e}")
+
+
+@client.event
+async def on_message(message):
+    """This function runs every time a new message is sent in any channel."""
+    # 1. PREVENT THE BOT FROM REPLYING TO ITSELF
+    if message.author == client.user:
+        return
+
+    # 2. CHECK IF THE MESSAGE IS IN OUR TARGET CHANNEL
+    if message.channel.id != TARGET_CHANNEL_ID:
+        return
+
+    # 3. PROCESS THE MESSAGE FOR A CONVERSATIONAL REPLY
+    try:
+        # Show a "typing..." indicator to the user
+        async with message.channel.typing():
+            # Fetch the last 10 messages to create a conversation history
+            history = []
+            async for msg in message.channel.history(limit=10):
+                # We build the history from oldest to newest
+                role = "user" if msg.author != client.user else "model"
+                history.append({'role': role, 'parts': [msg.content]})
+            history.reverse()  # Oldest message is now first
+
+            # Start a chat with the history
+            chat = model.start_chat(
+                history=history[:-1]
+            )  # History without the user's latest message
+
+            # Send the user's latest message to Gemini
+            response = await chat.send_message_async(message.content)
+
+            # Send the AI's response back to the Discord channel
+            await message.channel.send(response.text)
+
+    except Exception as e:
+        print(f"An error occurred while processing a message: {e}")
+        await message.channel.send(
+            "Sorry, I encountered an error while trying to respond.")
+
+# --- RUN THE BOT ---
+# This line uses the secret token to start the bot
 client.run(DISCORD_TOKEN)
-
