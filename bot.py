@@ -4,6 +4,7 @@ import random
 import datetime
 import google.generativeai as genai
 from discord.ext import tasks
+from keep_alive import keep_alive 
 # --- CONFIGURATION ---
 
 # Load secrets from Replit's environment
@@ -105,6 +106,8 @@ async def on_message(message):
         await message.channel.send(
             "Sorry, I encountered an error while trying to respond.")
 
+keep_alive()
 # --- RUN THE BOT ---
 # This line uses the secret token to start the bot
 client.run(DISCORD_TOKEN)
+
